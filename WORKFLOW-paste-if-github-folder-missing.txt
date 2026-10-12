@@ -1,0 +1,39 @@
+name: build
+on:
+  push:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch the Cleanroom 1.12.2 build template
+        id: tpl
+        run: |
+          git clone --depth 1 https://github.com/CleanroomMC/ForgeDevEnv.git /tmp/tpl || git clone --depth 1 https://github.com/CleanroomMC/TemplateDevEnv.git /tmp/tpl
+          rsync -a --exclude='/src' --exclude='/.git' --exclude='/.github' /tmp/tpl/ ./
+          JV=$(grep -oiE 'runs on Java [0-9]+' /tmp/tpl/README.md | grep -oE '[0-9]+' | head -n1)
+          echo "java=${JV:-21}" >> "$GITHUB_OUTPUT"
+
+      - name: Configure mod id and name
+        run: |
+          sed -i -E 's/^root_package[[:space:]]*=.*/root_package = com/; s/^mod_id[[:space:]]*=.*/mod_id = casperboost/; s/^mod_name[[:space:]]*=.*/mod_name = CasperBoost/; s/^enable_junit_testing[[:space:]]*=.*/enable_junit_testing = false/; s/^use_tags[[:space:]]*=.*/use_tags = false/; s/^generate_sources_jar[[:space:]]*=.*/generate_sources_jar = false/' gradle.properties
+          grep -nE '^(root_package|mod_id|mod_name|enable_junit_testing|use_tags|generate_sources_jar)' gradle.properties
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ steps.tpl.outputs.java }}
+
+      - name: Build
+        run: |
+          chmod +x gradlew
+          ./gradlew build --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: casperboost-jar
+          path: |
+            build/libs/*.jar
+            !build/libs/*-sources.jar
